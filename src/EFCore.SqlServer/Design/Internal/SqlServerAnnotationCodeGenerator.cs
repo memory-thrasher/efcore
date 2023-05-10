@@ -165,7 +165,103 @@ public class SqlServerAnnotationCodeGenerator : AnnotationCodeGenerator
         IProperty property,
         IDictionary<string, IAnnotation> annotations)
     {
-        var fragments = new List<MethodCallCodeFragment>(base.GenerateFluentApiCalls(property, annotations));
+        var fragments = new List<MethodCallCodeFragment>();
+
+        if (annotations.TryGetValue(RelationalAnnotationNames.DefaultValueSql, out var annotation)
+            && annotation.Value != null)
+        {
+            var defaultValueSql = ((string)annotation.Value).Trim();
+            Unwrap();
+            if (defaultValueSql.StartsWith("CONVERT", StringComparison.OrdinalIgnoreCase))
+            {
+                defaultValueSql = defaultValueSql.Substring(defaultValueSql.IndexOf(',') + 1);
+                defaultValueSql = defaultValueSql.Substring(0, defaultValueSql.LastIndexOf(')'));
+                Unwrap();
+            }
+
+            var type = property.ClrType.UnwrapNullableType();
+            if (type == typeof(bool)
+                && int.TryParse(defaultValueSql, out var intValue))
+            {
+                fragments.Add(new MethodCallCodeFragment(nameof(RelationalPropertyBuilderExtensions.HasDefaultValue), intValue != 0));
+                annotations.Remove(RelationalAnnotationNames.DefaultValueSql);
+            }
+            else if (type.IsNumeric()
+                     || type.IsEnum)
+            {
+                try
+                {
+                    fragments.Add(
+                        new MethodCallCodeFragment(
+                            nameof(RelationalPropertyBuilderExtensions.HasDefaultValue),
+                            Convert.ChangeType(defaultValueSql, type.IsEnum ? type.UnwrapEnumType() : type)));
+
+                    annotations.Remove(RelationalAnnotationNames.DefaultValueSql);
+                }
+                catch
+                {
+                    // Ignored
+                }
+            }
+            else if ((defaultValueSql.StartsWith('\'') || defaultValueSql.StartsWith("N'", StringComparison.OrdinalIgnoreCase))
+                     && defaultValueSql.EndsWith('\''))
+            {
+                var startIndex = defaultValueSql.IndexOf('\'');
+                defaultValueSql = defaultValueSql.Substring(startIndex + 1, defaultValueSql.Length - (startIndex + 2));
+
+                if (type == typeof(string))
+                {
+                    fragments.Add(new MethodCallCodeFragment(nameof(RelationalPropertyBuilderExtensions.HasDefaultValue), defaultValueSql));
+                    annotations.Remove(RelationalAnnotationNames.DefaultValueSql);
+                }
+                else if (type == typeof(bool)
+                         && bool.TryParse(defaultValueSql, out var boolValue))
+                {
+                    fragments.Add(new MethodCallCodeFragment(nameof(RelationalPropertyBuilderExtensions.HasDefaultValue), boolValue));
+                    annotations.Remove(RelationalAnnotationNames.DefaultValueSql);
+                }
+                else if (type == typeof(Guid)
+                         && Guid.TryParse(defaultValueSql, out var guid))
+                {
+                    fragments.Add(new MethodCallCodeFragment(nameof(RelationalPropertyBuilderExtensions.HasDefaultValue), guid));
+                    annotations.Remove(RelationalAnnotationNames.DefaultValueSql);
+                }
+                else if (type == typeof(DateTime)
+                         && DateTime.TryParse(defaultValueSql, out var dateTime))
+                {
+                    fragments.Add(new MethodCallCodeFragment(nameof(RelationalPropertyBuilderExtensions.HasDefaultValue), dateTime));
+                    annotations.Remove(RelationalAnnotationNames.DefaultValueSql);
+                }
+                else if (type == typeof(DateOnly)
+                         && DateOnly.TryParse(defaultValueSql, out var dateOnly))
+                {
+                    fragments.Add(new MethodCallCodeFragment(nameof(RelationalPropertyBuilderExtensions.HasDefaultValue), dateOnly));
+                    annotations.Remove(RelationalAnnotationNames.DefaultValueSql);
+                }
+                else if (type == typeof(TimeOnly)
+                         && TimeOnly.TryParse(defaultValueSql, out var timeOnly))
+                {
+                    fragments.Add(new MethodCallCodeFragment(nameof(RelationalPropertyBuilderExtensions.HasDefaultValue), timeOnly));
+                    annotations.Remove(RelationalAnnotationNames.DefaultValueSql);
+                }
+                else if (type == typeof(DateTimeOffset)
+                         && DateTimeOffset.TryParse(defaultValueSql, out var dateTimeOffset))
+                {
+                    fragments.Add(new MethodCallCodeFragment(nameof(RelationalPropertyBuilderExtensions.HasDefaultValue), dateTimeOffset));
+                    annotations.Remove(RelationalAnnotationNames.DefaultValueSql);
+                }
+            }
+
+            void Unwrap()
+            {
+                while (defaultValueSql.StartsWith('(') && defaultValueSql.EndsWith(')'))
+                {
+                    defaultValueSql = (defaultValueSql.Substring(1, defaultValueSql.Length - 2)).Trim();;
+                }
+            }
+        }
+
+        fragments = base.GenerateFluentApiCalls(property, annotations).Concat(fragments).ToList();
 
         if (GenerateValueGenerationStrategy(annotations, property.DeclaringEntityType.Model, onModel: false) is MethodCallCodeFragment
             valueGenerationStrategy)
@@ -183,12 +279,6 @@ public class SqlServerAnnotationCodeGenerator : AnnotationCodeGenerator
 
         return fragments;
     }
-
-    /// <inheritdoc />
-    public override IReadOnlyList<MethodCallCodeFragment> GenerateFluentApiCalls(
-        IRelationalPropertyOverrides overrides,
-        IDictionary<string, IAnnotation> annotations)
-        => base.GenerateFluentApiCalls(overrides, annotations);
 
     /// <summary>
     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to

@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore.Design.Internal;
 
 namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal;

@@ -459,6 +459,298 @@ optionsBuilder
                     Assert.Equal("1 + 2", entity.GetProperty("ComputedColumn").GetComputedColumnSql());
                 });
 
+        [ConditionalTheory]
+        [InlineData("(CONVERT([bit],(MyFunc())))")]
+        [InlineData("MyFunc()")]
+        public Task Non_literal_bool_default_values_are_passed_through(string sql)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<bool>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValueSql(\"{sql}\")", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(sql, entity.GetProperty("ColumnWithDefault").GetDefaultValueSql());
+                });
+
+        [ConditionalTheory]
+        [InlineData("-1", -1)]
+        [InlineData("0", 0)]
+        [InlineData("(0)", 0)]
+        [InlineData("(-2)", -2)]
+        [InlineData(" ( 2) ", 2)]
+        [InlineData(" (3 ) ", 3)]
+        [InlineData("((4))", 4)]
+        [InlineData("((5))", 5)]
+        [InlineData("(CONVERT([int],(6)))", 6)]
+        [InlineData("(CONVERT([int],(-7)))", -7)]
+        [InlineData("(CONVERT( \"int\",(-8)))", -8)]
+        [InlineData("(CONVERT(\"int\" ,(-9)))", -9)]
+        [InlineData("(( CONVERT( int , 10 )) )", 10)]
+        [InlineData("( (CONVERT( int , 11 )) )", 11)]
+        public async Task Simple_integer_literals_are_parsed_for_HasDefaultValue(string sql, int expected)
+        {
+            await Simple_integer_literals_are_parsed_for_HasDefaultValue(sql, (sbyte)expected, "(sbyte)", "");
+            await Simple_integer_literals_are_parsed_for_HasDefaultValue(sql, (short)expected, "(short)", "");
+            await Simple_integer_literals_are_parsed_for_HasDefaultValue(sql, expected, "", "");
+            await Simple_integer_literals_are_parsed_for_HasDefaultValue(sql, (long)expected, "", "L");
+        }
+
+        [ConditionalTheory]
+        [InlineData("1", 1)]
+        [InlineData("0", 0)]
+        [InlineData("(0)", 0)]
+        [InlineData("(2)", 2)]
+        [InlineData(" ( 2) ", 2)]
+        [InlineData(" (3 ) ", 3)]
+        [InlineData("((4))", 4)]
+        [InlineData("((5))", 5)]
+        [InlineData("(CONVERT([int],(6)))", 6)]
+        [InlineData("(CONVERT([int],(7)))", 7)]
+        [InlineData("(CONVERT( \"int\",(8)))", 8)]
+        [InlineData("(CONVERT(\"int\" ,(9)))", 9)]
+        [InlineData("(( CONVERT( int , 10 )) )", 10)]
+        [InlineData("( (CONVERT( int , 11 )) )", 11)]
+        public async Task Simple_unsigned_integer_literals_are_parsed_for_HasDefaultValue(string sql, int expected)
+        {
+            await Simple_integer_literals_are_parsed_for_HasDefaultValue(sql, (byte)expected, "(byte)", "");
+            await Simple_integer_literals_are_parsed_for_HasDefaultValue(sql, (ushort)expected, "(ushort)", "");
+            await Simple_integer_literals_are_parsed_for_HasDefaultValue(sql, (uint)expected, "", "u");
+            await Simple_integer_literals_are_parsed_for_HasDefaultValue(sql, (ulong)expected, "", "ul");
+        }
+
+        public Task Simple_integer_literals_are_parsed_for_HasDefaultValue<T>(string sql, T expected, string preamble, string postamble)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<T>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue({preamble}{expected}{postamble})", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(expected, entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("(CONVERT([int],(MyFunc())))")]
+        [InlineData("MyFunc()")]
+        public Task Non_literal_int_default_values_are_passed_through(string sql)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<int>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValueSql(\"{sql}\")", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(sql, entity.GetProperty("ColumnWithDefault").GetDefaultValueSql());
+                });
+
+        [ConditionalTheory]
+        [InlineData("-1.1111", -1.1111, "-1.1111")]
+        [InlineData("(0.0)", 0.0, "0.0")]
+        [InlineData("(0)", 0.0, "0.0")]
+        [InlineData("1.1000000000000001e+000", 1.1000000000000001, "1.1000000000000001")]
+        [InlineData("(CONVERT([float],(1.1234)))", 1.1234, "1.1234")]
+        [InlineData("(CONVERT([float],(-1.5)))", -1.5, "-1.5")]
+        public Task Simple_double_literals_are_parsed_for_HasDefaultValue(string sql, double expected, string expectedString)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<double>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue({expectedString})", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(expected, entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("-1.1111", -1.1111f, "-1.1111f")]
+        [InlineData("(0.0)", 0.0f, "0f")]
+        [InlineData("(0)", 0.0f, "0f")]
+        [InlineData("1.1000000e+000", 1.1f, "1.1f")]
+        [InlineData("(CONVERT([single],(1.1234)))", 1.1234f, "1.1234f")]
+        [InlineData("(CONVERT([single],(-1.5)))", -1.5f, "-1.5f")]
+        public Task Simple_float_literals_are_parsed_for_HasDefaultValue(string sql, float expected, string expectedString)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<float>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue({expectedString})", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(expected, entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("-1.1111", "-1.1111", "-1.1111m")]
+        [InlineData("(0.0)", "0.0", "0.0m")]
+        [InlineData("(0)", "0", "0m")]
+        [InlineData("(CONVERT([decimal],(1.1234)))", "1.1234", "1.1234m")]
+        [InlineData("(CONVERT([decimal],(-1.5)))", "-1.5", "-1.5m")]
+        public Task Simple_decimal_literals_are_parsed_for_HasDefaultValue(string sql, decimal expected, string expectedString)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<decimal>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue({expectedString})", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(expected, entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("0", false)]
+        [InlineData("1", true)]
+        [InlineData("(0)", false)]
+        [InlineData("(1)", true)]
+        [InlineData(" ( 0) ", false)]
+        [InlineData(" (1 ) ", true)]
+        [InlineData("((0))", false)]
+        [InlineData("((1))", true)]
+        [InlineData("'false'", false)]
+        [InlineData("'true'", true)]
+        [InlineData("('False')", false)]
+        [InlineData("('True')", true)]
+        [InlineData(" ( ' FALSE ') ", false)]
+        [InlineData(" ('TRUE ' ) ", true)]
+        [InlineData("(('FalsE'))", false)]
+        [InlineData("(('TruE'))", true)]
+        [InlineData("(CONVERT ([bit],(0)))", false)]
+        [InlineData("(CONVERT([bit],(1)))", true)]
+        [InlineData("(CONVERT( \"bit\",(0)))", false)]
+        [InlineData("(CONVERT(\"bit\" ,(1)))", true)]
+        [InlineData("(( CONVERT( bit , 0 )) )", false)]
+        [InlineData("( (CONVERT( bit , 1 )) )", true)]
+        public Task Simple_bool_literals_are_parsed_for_HasDefaultValue(string sql, bool expected)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<bool>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue({expected.ToString().ToLowerInvariant()})", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(expected, entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("'1973-09-03T12:00:01.0020000'", "1973-09-03T12:00:01.0020000", ".HasDefaultValue(new DateTime(1973, 9, 3, 12, 0, 1, 2, DateTimeKind.Unspecified))")]
+        [InlineData("('1968-10-23')", "1968-10-23", ".HasDefaultValue(new DateTime(1968, 10, 23, 0, 0, 0, 0, DateTimeKind.Unspecified))")]
+        [InlineData("(CONVERT ([datetime2],('1973-09-03T01:02:03')))", "1973-09-03T01:02:03", ".HasDefaultValue(new DateTime(1973, 9, 3, 1, 2, 3, 0, DateTimeKind.Unspecified))")]
+        [InlineData("(CONVERT(datetime,'12:12:12'))", "12:12:12", "12, 12, 12, 0, DateTimeKind.Unspecified))")]
+        public Task Simple_DateTime_literals_are_parsed_for_HasDefaultValue(string sql, DateTime expected, string expectedString)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<DateTime>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains(expectedString, code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(expected, entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("(CONVERT([datetime2],(getdate())))")]
+        [InlineData("getdate()")]
+        [InlineData("12-01-16 12:32")]
+        public Task Non_literal_or_non_parsable_DateTime_default_values_are_passed_through(string sql)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<DateTime>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValueSql(\"{sql}\")", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(sql, entity.GetProperty("ColumnWithDefault").GetDefaultValueSql());
+                });
+
+        [ConditionalTheory]
+        [InlineData("('1968-10-23')", "1968-10-23", "new DateOnly(1968, 10, 23)")]
+        [InlineData("(CONVERT([date],('1973-09-03T01:02:03')))", "1973-09-03", "new DateOnly(1973, 9, 3)")]
+        public Task Simple_DateOnly_literals_are_parsed_for_HasDefaultValue(string sql, string expected, string expectedString)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<DateOnly>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue({expectedString})", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(DateOnly.Parse(expected), entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("('12:00:01.0020000')", "12:00:01.0020000", "new TimeOnly(12, 0, 1, 2)")]
+        [InlineData("(CONVERT([time],('1973-09-03T01:02:03')))", "01:02:03", "new TimeOnly(1, 2, 3)")]
+        public Task Simple_TimeOnly_literals_are_parsed_for_HasDefaultValue(string sql, string expected, string expectedString)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<TimeOnly>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue({expectedString})", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(TimeOnly.Parse(expected), entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("'1973-09-03T12:00:01.0000000+10:00'", "1973-09-03T12:00:01.0000000+10:00", "new DateTimeOffset(new DateTime(1973, 9, 3, 12, 0, 1, 0, DateTimeKind.Unspecified), new TimeSpan(0, 10, 0, 0, 0))")]
+        public Task Simple_DateTimeOffset_literals_are_parsed_for_HasDefaultValue(string sql, DateTimeOffset expected, string expectedString)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<DateTimeOffset>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue({expectedString})", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(expected, entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("('0E984725-C51C-4BF4-9960-E1C80E27ABA0')", "0E984725-C51C-4BF4-9960-E1C80E27ABA0", "new Guid(\"0e984725-c51c-4bf4-9960-e1c80e27aba0\")")]
+        [InlineData("(CONVERT([uniqueidentifier],('0E984725-C51C-4BF4-9960-E1C80E27ABA0')))", "0E984725-C51C-4BF4-9960-E1C80E27ABA0", "new Guid(\"0e984725-c51c-4bf4-9960-e1c80e27aba0\")")]
+        public Task Simple_Guid_literals_are_parsed_for_HasDefaultValue(string sql, Guid expected, string expectedString)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<Guid>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue({expectedString})", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(expected, entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
+        [ConditionalTheory]
+        [InlineData("(CONVERT([uniqueidentifier],(newid())))")]
+        [InlineData("NEWSEQUENTIALID()")]
+        public Task Non_literal_Guid_default_values_are_passed_through(string sql)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<Guid>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValueSql(\"{sql}\")", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(sql, entity.GetProperty("ColumnWithDefault").GetDefaultValueSql());
+                });
+
+        [ConditionalTheory]
+        [InlineData("'Hot'", "Hot")]
+        [InlineData("('Buttered')", "Buttered")]
+        [InlineData("(N'Buttered')", "Buttered")]
+        [InlineData("('')", "")]
+        [InlineData("(N'')", "")]
+        [InlineData(" ( N' Toast! ') ", " Toast! ")]
+        [InlineData("(CONVERT([nvarchar(20)],('Scones')))", "Scones")]
+        [InlineData("(CONVERT([character varying(max)],('Toasted teacakes')))", "Toasted teacakes")]
+        public Task Simple_string_literals_are_parsed_for_HasDefaultValue(string sql, string expected)
+            => TestAsync(
+                modelBuilder => modelBuilder.Entity("Entity").Property<string>("ColumnWithDefault").HasDefaultValueSql(sql),
+                new ModelCodeGenerationOptions(),
+                code => Assert.Contains($".HasDefaultValue(\"{expected}\")", code.ContextFile.Code),
+                model =>
+                {
+                    var entity = model.FindEntityType("TestNamespace.Entity")!;
+                    Assert.Equal(expected, entity.GetProperty("ColumnWithDefault").GetDefaultValue());
+                });
+
         [ConditionalFact]
         public Task IsUnicode_works()
             => TestAsync(
